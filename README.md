@@ -1,2 +1,2 @@
 # Q-trading
-Q-trading agent for portfolio management
+Q-learn agent for portfolio management
