@@ -49,17 +49,22 @@ def get_stock_data(stock_name, start_date, end_date):
 
 def stock_summary(stock_names, start_date, end_date):
     #Creating summary with the stock data
-    #Get stock data
-    sdata = get_stock_data(stock_names, start_date, end_date)
+    data = pd.DataFrame()
+    for stock_name in stock_names:
+        #Get stock data
+        sdata = get_stock_data(stock_name, start_date, end_date)
+        sdata = sdata['Close']
+        data = pd.concat([data, sdata], axis=1, sort=False)
+    sdata = data
     #Filling possible NaNs
     sdata=sdata.fillna(method='ffill',axis=0)
     sdata=sdata.fillna(method='bfill',axis=0)
     #Normalising to the first item
-    sdata = sdata / sdata.ix[0].values
+    sdata = sdata / sdata.iloc[0]
     #Creating return data summarising each stock
     r_data = pd.DataFrame(index=stock_names)
     #Creating daily returns from the data
-    daily = sdata.ix[1:-1]-sdata.ix[0:-2].values
+    daily = sdata.iloc[1:-1]-sdata.iloc[0:-2].values
     #Creating data summary
     r_data['Mean'] = sdata.mean().values
     r_data['Std'] = sdata.std().values
@@ -70,8 +75,10 @@ def stock_summary(stock_names, start_date, end_date):
     r_data['Dailyr_skew'] = daily.skew().values
     r_data['Dailyr_kurt'] = daily.kurt().values
     r_data = r_data.dropna(axis=0)
-    print 'Processed data.'
+    print('Data collected.')
     return r_data
+
+
 
 def cluster(X, n, plot):
     #Creating clusters from the stock data
@@ -107,7 +114,8 @@ def cluster(X, n, plot):
         plt.grid()
         plt.legend()
         plt.title("Bar plot of 1. and 2. PCA component")
-        plt.show()
+        #plt.show()
+        plt.savefig("bar.png")
         #Plotting clusters and centers
         cn = clu.fit_predict(X)
         fig = plt.figure(facecolor='white',figsize=(10,6))
@@ -125,7 +133,8 @@ def cluster(X, n, plot):
         plt.ylabel('PCA 2')
         plt.title('Clustered PCA data')
         plt.grid()
-        plt.show()
+        #plt.show()
+        plt.savefig("pca.png")
     return c_name
 
 def mean_stock(X ,label, pred, n):
@@ -144,10 +153,17 @@ def mean_stock(X ,label, pred, n):
 
 def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot, goal):
     #Q-learning algorithm to trade daily stocks
-    data = get_stock_data(portfolio, start_train_date, end_date)
+    sdata = pd.DataFrame()
+    for sname in portfolio:
+        data = get_stock_data(sname, start_train_date, end_date)
+        data = data['Close']
+        sdata = pd.concat([sdata, data], axis=1, sort=False)
+    data = sdata
+    data=data.fillna(method='ffill',axis=0)
+    data=data.fillna(method='bfill',axis=0)
     #Selecting history range to study in days
     past = 180
-    pl_end = len(data) - len(data[(data.index > start_test_date) & (data.index < end_date)])
+    pl_end = len(data) - len(data[(data.index > pd.to_datetime(start_test_date)) & (data.index < pd.to_datetime(end_date))])
     #Creating the empty Q-matrix
     pn = len(portfolio) # Size of the portfolio
     pa = 3              # Possible actions ['BUY,'SELL','WAIT']
@@ -169,26 +185,28 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
     port_value = np.ones(len(portfolio))*invest/float(len(portfolio))
     for k in range(past,len(data)):
         #Subsetting data
-        sub_data = data.ix[(k-past):k]
-        sub_data = sub_data / sub_data.ix[0]
+        sub_data = data.iloc[(k-past):k]
+        sub_data = sub_data / sub_data.iloc[0]
         #Change since yesterday
-        yrt = data.ix[k].values/data.ix[k-1].values-1
+        yrt = data.iloc[k].values/data.iloc[k-1].values-1
         #Calculating daily returns
-        daily_rt = sub_data.ix[1:past] - sub_data.ix[0:(past-1)].values
+        daily_rt = sub_data.iloc[1:past] - sub_data.iloc[0:(past-1)].values
         #Calculating daily returns indicators
-        ma = pd.rolling_mean(sub_data, 15)
-        mstd = pd.rolling_std(sub_data, 15)
+        #ma = pd.rolling_mean(sub_data, 15)
+        ma = sub_data.rolling(15).mean()
+        #mstd = pd.rolling_std(sub_data, 15)
+        mstd = sub_data.rolling(15).std()
         ma_l=ma-2*mstd
         ma_h=ma+2*mstd
         #Sharpe ratio
         sharpe = np.sqrt(252)*daily_rt.mean(axis=0)/daily_rt.std(axis=0)
         #Momentum
-        momentum = sub_data.ix[0] / sub_data.ix[14] - 1
+        momentum = sub_data.iloc[0] / sub_data.iloc[14] - 1
         #Inputs for states
         sharpe = sharpe.values
         mome = momentum.values
-        over_ma_h  = ma.ix[-1,:].values>ma_h.ix[-1,:].values
-        under_ma_l = ma.ix[-1,:].values<ma_l.ix[-1,:].values
+        over_ma_h  = ma.iloc[-1,:].values>ma_h.iloc[-1,:].values
+        under_ma_l = ma.iloc[-1,:].values<ma_l.iloc[-1,:].values
         for i in range(0,pn):
             #Get the current state
             state = i_state(sharpe[i], mome[i], over_ma_h[i], under_ma_l[i], state_dict)
@@ -198,15 +216,15 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
             port_value[i] = port_value[i] + reward * port_value[i]
         #Saving portfolio value
         pv.append(sum(port_value))
-    H=data.ix[past:len(data)]
+    H=data.iloc[past:len(data)]
     H['value'] = pv
     #Plotting one example stock
     if plot == 1:
         plt.figure(facecolor='white',figsize=(10,6))
-        sub_data.ix[:,0].plot(title=portfolio[0])
-        ma.ix[:,0].plot(color='red')
-        ma_l.ix[:,0].plot(color='grey')
-        ma_h.ix[:,0].plot(color='grey')
+        sub_data.iloc[:,0].plot(title=portfolio[0])
+        ma.iloc[:,0].plot(color='red')
+        ma_l.iloc[:,0].plot(color='grey')
+        ma_h.iloc[:,0].plot(color='grey')
         sr = 'Sharpe ratio %.2f' % sharpe[0]
         plt.text(50, 1.0, sr ,color='green', fontsize=15,
         bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
@@ -214,7 +232,8 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
         plt.xticks(rotation=15)
         plt.ylabel('Value')
         plt.tight_layout()
-        plt.show()
+        #plt.show()
+        plt.savefig("stock.png")
     return H['value']
 
 def get_prob(l_start, l_level, l_end, p_start, p_end):
@@ -243,6 +262,8 @@ def i_state(sharpe, mome, over_ma_h, under_ma_l, state_dict):
         i0 = 'sh1'
     if sharpe > 0.80:
         i0 = 'sh2'
+    if np.isnan(sharpe):
+        i0 = 'sh0'
     #Momentum  <= 0, 0-0.1 , 0.1 =>   
     if mome < 0.0:
         i1 = 'mo0'
@@ -250,6 +271,8 @@ def i_state(sharpe, mome, over_ma_h, under_ma_l, state_dict):
         i1 = 'mo1'
     if mome > 0.1:
         i1 = 'mo2'
+    if np.isnan(mome):
+        i1 = 'mo0'
     #over ma_h    False, True    => 
     if over_ma_h == True:
         i2 = 'om1'
@@ -353,15 +376,15 @@ if __name__ == '__main__':
     stock_names = get_stock_names()
 	#Getting summary information for the stocks
     #Setting range for 2010 - 2014
-    start_date = '2010-01-01'
-    end_date = '2014-12-31'
+    start_date = '2013-01-01'
+    end_date = '2017-12-31'
     s_data = stock_summary(stock_names, start_date, end_date)
     #Selecting 4 stocks from the summary with PCA and clustering
     portfolio = cluster(s_data, 4, plot)
     #portfolio = ['LOW', 'ALL', 'MSFT', 'AAPL']
-    start_train_date = '2010-01-01'
-    start_test_date = '2014-12-31'
-    end_date = '2015-12-31'
+    start_train_date = '2013-01-01'
+    start_test_date = '2017-12-31'
+    end_date = '2018-12-31'
     #Launch Q-learning agent to manage your portfolio
     investment = 100000 #For example in Euro or Dollar
     #Trying to maximise your portfolio
@@ -378,21 +401,30 @@ if __name__ == '__main__':
        X = scaler.fit_transform(s_data)
        X = pd.DataFrame(X)
        X.columns = s_data.columns
-       pd.tools.plotting.scatter_matrix(X, alpha=0.2, color='green')
-       plt.show()
+       pd.plotting.scatter_matrix(X, alpha=0.2, color='green')
+       #plt.show()
+       plt.savefig("Scatter.png")
        #Plotting the Q-learning results
        pv.plot(title='Q-learning testing', figsize=(10, 6))
        plt.grid()
        plt.ylabel('Value [Euro]')
        plt.tight_layout()
-       plt.show()
+       #plt.show()
+       plt.savefig("Value.png")
        #Reference to S&P 500
-       ref_data = get_stock_data(['INDEX_SPY'],start_train_date,end_date)
+       ref_data = get_stock_data(['SPY'],start_train_date,end_date)
+       ref_data = ref_data['Close']
        hmm=pd.concat([pv,ref_data],axis=1)
-       hmm=hmm.ix[180:-1]/hmm.ix[180] #Normalise and limit to use range
+       hmm=hmm.iloc[180:-1]/hmm.iloc[180] #Normalise and limit to use range
        #Do nothing data
-       donoth=get_stock_data(portfolio,start_train_date,end_date)
-       donoth=donoth.ix[180:-1]/donoth.ix[180]
+       temp = pd.DataFrame()
+       for stock_name in portfolio:
+           donoth = get_stock_data(stock_name, start_train_date, end_date)
+           #data = get_stock_data(sname, start_train_date, end_date)
+           donoth = donoth['Close']
+           temp = pd.concat([temp, donoth], axis=1, sort=False)
+       donoth=temp
+       donoth=donoth.iloc[180:-1]/donoth.iloc[180]
        donoth=donoth*0.25
        donoth=donoth.sum(axis=1)
        hmm=pd.concat([hmm,donoth],axis=1)
@@ -401,8 +433,9 @@ if __name__ == '__main__':
        plt.grid()
        plt.ylabel('Normalized value')
        plt.tight_layout()
-       plt.show()
-    print 'Done.'
+       #plt.show()
+       plt.savefig("Result.png")
+    print('Done.')
  
 
 
