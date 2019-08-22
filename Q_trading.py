@@ -1,5 +1,6 @@
 #For data handling
 import time
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -54,6 +55,8 @@ def stock_summary(stock_names, start_date, end_date):
         #Get stock data
         sdata = get_stock_data(stock_name, start_date, end_date)
         sdata = sdata['Close']
+        #sdata.columns = [stock_name]
+        print(stock_name)
         data = pd.concat([data, sdata], axis=1, sort=False)
     sdata = data
     #Filling possible NaNs
@@ -162,7 +165,7 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
     data=data.fillna(method='ffill',axis=0)
     data=data.fillna(method='bfill',axis=0)
     #Selecting history range to study in days
-    past = 180
+    past = 360
     pl_end = len(data) - len(data[(data.index > pd.to_datetime(start_test_date)) & (data.index < pd.to_datetime(end_date))])
     #Creating the empty Q-matrix
     pn = len(portfolio) # Size of the portfolio
@@ -369,73 +372,78 @@ number of stocks will be limited
 
 '''
 
-if __name__ == '__main__':
-    #If you want plots set plot to 1
-    plot = 1
-    #Defining short stock names (format FB, GOOG)
-    stock_names = get_stock_names()
-	#Getting summary information for the stocks
-    #Setting range for 2010 - 2014
+#If you want plots set plot to 1
+plot = 1
+#Defining short stock names (format FB, GOOG)
+stock_names = get_stock_names()
+#Getting summary information for the stocks
+
+if os.path.isfile('stock_summary.csv'): 
+    s_data = pd.read_csv('stock_summary.csv')
+else:
+    #Setting range for 2010 - 2017
     start_date = '2013-01-01'
     end_date = '2017-12-31'
     s_data = stock_summary(stock_names, start_date, end_date)
-    #Selecting 4 stocks from the summary with PCA and clustering
-    portfolio = cluster(s_data, 4, plot)
-    #portfolio = ['LOW', 'ALL', 'MSFT', 'AAPL']
-    start_train_date = '2013-01-01'
-    start_test_date = '2017-12-31'
-    end_date = '2018-12-31'
-    #Launch Q-learning agent to manage your portfolio
-    investment = 100000 #For example in Euro or Dollar
-    #Trying to maximise your portfolio
-    pv_max = q_learn(portfolio, start_train_date, start_test_date, end_date, investment, plot, 'win')
-    #Trying to minimize your portfolio (to test learning)
-    pv_min = q_learn(portfolio, start_train_date, start_test_date, end_date, investment, plot, 'lose')
-    #Combining results
-    pv=pd.concat([pv_max, pv_min], axis=1)
-    pv.columns=['To win','To lose']
-    #Plotting
-    if plot == 1:
-       #Plotting the scaled stock summary data
-       scaler = MinMaxScaler()
-       X = scaler.fit_transform(s_data)
-       X = pd.DataFrame(X)
-       X.columns = s_data.columns
-       pd.plotting.scatter_matrix(X, alpha=0.2, color='green')
-       #plt.show()
-       plt.savefig("Scatter.png")
-       #Plotting the Q-learning results
-       pv.plot(title='Q-learning testing', figsize=(10, 6))
-       plt.grid()
-       plt.ylabel('Value [Euro]')
-       plt.tight_layout()
-       #plt.show()
-       plt.savefig("Value.png")
-       #Reference to S&P 500
-       ref_data = get_stock_data(['SPY'],start_train_date,end_date)
-       ref_data = ref_data['Close']
-       hmm=pd.concat([pv,ref_data],axis=1)
-       hmm=hmm.iloc[180:-1]/hmm.iloc[180] #Normalise and limit to use range
-       #Do nothing data
-       temp = pd.DataFrame()
-       for stock_name in portfolio:
-           donoth = get_stock_data(stock_name, start_train_date, end_date)
-           #data = get_stock_data(sname, start_train_date, end_date)
-           donoth = donoth['Close']
-           temp = pd.concat([temp, donoth], axis=1, sort=False)
-       donoth=temp
-       donoth=donoth.iloc[180:-1]/donoth.iloc[180]
-       donoth=donoth*0.25
-       donoth=donoth.sum(axis=1)
-       hmm=pd.concat([hmm,donoth],axis=1)
-       hmm.columns=['To win','To lose','S&P 500','Do nothing']
-       hmm.plot()
-       plt.grid()
-       plt.ylabel('Normalized value')
-       plt.tight_layout()
-       #plt.show()
-       plt.savefig("Result.png")
-    print('Done.')
+    s_data.to_csv("stock_summary.csv")
+
+#Selecting 4 stocks from the summary with PCA and clustering
+portfolio = cluster(s_data, 4, plot)
+#portfolio = ['LOW', 'ALL', 'MSFT', 'AAPL']
+start_train_date = '2013-01-01'
+start_test_date = '2017-12-31'
+end_date = '2019-06-30'
+#Launch Q-learning agent to manage your portfolio
+investment = 100000 #For example in Euro or Dollar
+#Trying to maximise your portfolio
+pv_max = q_learn(portfolio, start_train_date, start_test_date, end_date, investment, plot, 'win')
+#Trying to minimize your portfolio (to test learning)
+pv_min = q_learn(portfolio, start_train_date, start_test_date, end_date, investment, plot, 'lose')
+#Combining results
+pv=pd.concat([pv_max, pv_min], axis=1)
+pv.columns=['To win','To lose']
+#Plotting
+if plot == 1:
+    #Plotting the scaled stock summary data
+    scaler = MinMaxScaler()
+    X = scaler.fit_transform(s_data)
+    X = pd.DataFrame(X)
+    X.columns = s_data.columns
+    pd.plotting.scatter_matrix(X, alpha=0.2, color='green')
+    #plt.show()
+    plt.savefig("Scatter.png")
+    #Plotting the Q-learning results
+    pv.plot(title='Q-learning testing', figsize=(10, 6))
+    plt.grid()
+    plt.ylabel('Value [Euro]')
+    plt.tight_layout()
+    #plt.show()
+    plt.savefig("Value.png")
+    #Reference to S&P 500
+    ref_data = get_stock_data(['SPY'],start_train_date,end_date)
+    ref_data = ref_data['Close']
+    hmm=pd.concat([pv,ref_data],axis=1)
+    hmm=hmm.iloc[360:-1]/hmm.iloc[360] #Normalise and limit to use range
+    #Do nothing data
+    temp = pd.DataFrame()
+    for stock_name in portfolio:
+        donoth = get_stock_data(stock_name, start_train_date, end_date)
+        #data = get_stock_data(sname, start_train_date, end_date)
+        donoth = donoth['Close']
+        temp = pd.concat([temp, donoth], axis=1, sort=False)
+    donoth=temp
+    donoth=donoth.iloc[360:-1]/donoth.iloc[360]
+    donoth=donoth*0.25
+    donoth=donoth.sum(axis=1)
+    hmm=pd.concat([hmm,donoth],axis=1)
+    hmm.columns=['To win','To lose','S&P 500','Do nothing']
+    hmm.plot()
+    plt.grid()
+    plt.ylabel('Normalized value')
+    plt.tight_layout()
+    #plt.show()
+    plt.savefig("Result.png")
+print('Done.')
  
 
 
