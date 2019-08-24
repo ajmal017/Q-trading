@@ -37,14 +37,19 @@ def get_stock_names():
         stock_name = []
         print("Something went wrong. Check your internet connection.")
         return stock_name
+
+
     
 def get_stock_data(stock_name, start_date, end_date):
-    #Reading data from Quandal API, note that free anonymous requests are limited
-    #my_api_key = 'your own api key'
-    #my_api_key = None
-    #Stock data is limited to certain range
-    #get_names = ['YAHOO/' + x + '.6' for x in stock_name]
-    data = yf.download(stock_name, start_date, end_date)
+    #Reading data from yfinance
+    stock_name = stock_name.replace("\n","")
+    if os.path.isfile("data/"+stock_name+".csv"):
+        data = pd.read_csv("data/"+stock_name+".csv", index_col=0)
+        data.index = pd.to_datetime(data.index)
+    else:
+        data = yf.download(stock_name, start_date, end_date)
+        data = data['Close']
+        data.to_csv("data/"+stock_name+".csv", header=True)
     #data = data.sort_index()
     return data
 
@@ -53,11 +58,18 @@ def stock_summary(stock_names, start_date, end_date):
     data = pd.DataFrame()
     for stock_name in stock_names:
         #Get stock data
-        sdata = get_stock_data(stock_name, start_date, end_date)
-        sdata = sdata['Close']
+        #sdata = get_stock_data(stock_name, start_date, end_date)
         #sdata.columns = [stock_name]
-        print(stock_name)
+        #print(stock_name)
+        stock_name = stock_name.replace("\n","")
+        if os.path.isfile("data/"+stock_name+".csv"): 
+            sdata = pd.read_csv("data/"+stock_name+".csv", index_col=0)
+            sdata.index = pd.to_datetime(sdata.index)
+        else:
+            sdata = get_stock_data(stock_name, start_date, end_date)
+        
         data = pd.concat([data, sdata], axis=1, sort=False)
+
     sdata = data
     #Filling possible NaNs
     sdata=sdata.fillna(method='ffill',axis=0)
@@ -158,9 +170,18 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
     #Q-learning algorithm to trade daily stocks
     sdata = pd.DataFrame()
     for sname in portfolio:
-        data = get_stock_data(sname, start_train_date, end_date)
-        data = data['Close']
-        sdata = pd.concat([sdata, data], axis=1, sort=False)
+        #data = get_stock_data(sname, start_train_date, end_date)
+        #data = data['Close']
+        #sdata = pd.concat([sdata, data], axis=1, sort=False)      
+        stock_name = sname.replace("\n","")
+        if os.path.isfile("data/"+stock_name+".csv"):
+            data = pd.read_csv("data/"+stock_name+".csv", index_col=0)
+            data.index = pd.to_datetime(data.index)
+        else:
+            data = yf.download(stock_name, start_date, end_date)
+            data = data['Close']
+            data.to_csv("data/"+stock_name+".csv", header=True)
+        sdata = pd.concat([sdata, data], axis=1, sort=False) 
     data = sdata
     data=data.fillna(method='ffill',axis=0)
     data=data.fillna(method='bfill',axis=0)
@@ -350,7 +371,7 @@ def get_reward(action, yrt, goal):
     if action == 'WAIT':
         reward = 0.0
     if goal == 'lose':
-        return reward*(-1.0)
+        return reward*(-2.0)
     else:
         return reward
 
@@ -371,28 +392,23 @@ number of stocks will be limited
 *** NOTE ***
 
 '''
-
+if not os.path.exists('data'):
+    os.makedirs('data')
 #If you want plots set plot to 1
 plot = 1
 #Defining short stock names (format FB, GOOG)
 stock_names = get_stock_names()
 #Getting summary information for the stocks
-
-if os.path.isfile('stock_summary.csv'): 
-    s_data = pd.read_csv('stock_summary.csv')
-else:
-    #Setting range for 2010 - 2017
-    start_date = '2013-01-01'
-    end_date = '2017-12-31'
-    s_data = stock_summary(stock_names, start_date, end_date)
-    s_data.to_csv("stock_summary.csv")
-
+start_date = '2013-01-01'
+end_date = '2019-05-30'
+s_data = stock_summary(stock_names, start_date, end_date)
 #Selecting 4 stocks from the summary with PCA and clustering
-portfolio = cluster(s_data, 4, plot)
+n_stock = 4
+portfolio = cluster(s_data, n_stock, plot)
 #portfolio = ['LOW', 'ALL', 'MSFT', 'AAPL']
 start_train_date = '2013-01-01'
 start_test_date = '2017-12-31'
-end_date = '2019-06-30'
+end_date = '2019-05-30'
 #Launch Q-learning agent to manage your portfolio
 investment = 100000 #For example in Euro or Dollar
 #Trying to maximise your portfolio
@@ -420,8 +436,8 @@ if plot == 1:
     #plt.show()
     plt.savefig("Value.png")
     #Reference to S&P 500
-    ref_data = get_stock_data(['SPY'],start_train_date,end_date)
-    ref_data = ref_data['Close']
+    ref_data = get_stock_data('SPY',start_train_date,end_date)
+    #ref_data = ref_data['Close']
     hmm=pd.concat([pv,ref_data],axis=1)
     hmm=hmm.iloc[360:-1]/hmm.iloc[360] #Normalise and limit to use range
     #Do nothing data
@@ -429,11 +445,11 @@ if plot == 1:
     for stock_name in portfolio:
         donoth = get_stock_data(stock_name, start_train_date, end_date)
         #data = get_stock_data(sname, start_train_date, end_date)
-        donoth = donoth['Close']
+        #donoth = donoth['Close']
         temp = pd.concat([temp, donoth], axis=1, sort=False)
     donoth=temp
     donoth=donoth.iloc[360:-1]/donoth.iloc[360]
-    donoth=donoth*0.25
+    donoth=donoth*1/n_stock
     donoth=donoth.sum(axis=1)
     hmm=pd.concat([hmm,donoth],axis=1)
     hmm.columns=['To win','To lose','S&P 500','Do nothing']
