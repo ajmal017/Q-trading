@@ -37,8 +37,6 @@ def get_stock_names():
         stock_name = []
         print("Something went wrong. Check your internet connection.")
         return stock_name
-
-
     
 def get_stock_data(stock_name, start_date, end_date):
     #Reading data from yfinance
@@ -92,8 +90,6 @@ def stock_summary(stock_names, start_date, end_date):
     r_data = r_data.dropna(axis=0)
     print('Data collected.')
     return r_data
-
-
 
 def cluster(X, n, plot):
     #Creating clusters from the stock data
@@ -166,7 +162,8 @@ def mean_stock(X ,label, pred, n):
         centers = np.append(centers,[X[pred==i][min_id]], axis=0)
     return c_names, centers
 
-def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot, goal):
+def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, 
+plot, goal, past):
     #Q-learning algorithm to trade daily stocks
     sdata = pd.DataFrame()
     for sname in portfolio:
@@ -186,7 +183,6 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
     data=data.fillna(method='ffill',axis=0)
     data=data.fillna(method='bfill',axis=0)
     #Selecting history range to study in days
-    past = 360
     pl_end = len(data) - len(data[(data.index > pd.to_datetime(start_test_date)) & (data.index < pd.to_datetime(end_date))])
     #Creating the empty Q-matrix
     pn = len(portfolio) # Size of the portfolio
@@ -196,11 +192,11 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
     #Create states
     state_dict = create_states()
     #Q-learn parameters
-    gamma = 0.30     # Learning parameter
-    alpha = 0.15     # Learning parameter
+    gamma = 0.35     # Learning parameter
+    alpha = 0.10     # Learning parameter
     state0 = 0       # Initial state
     action0 = 'WAIT' # Initial action
-    p_start = 0.55   # Random action probability at the begining of training
+    p_start = 0.65   # Random action probability at the begining of training
     p_end = 0.01     # Random action probability at the end of training
     #Probability decay
     p = get_prob(past, pl_end, len(data), p_start, p_end)
@@ -255,7 +251,7 @@ def q_learn(portfolio, start_train_date, start_test_date, end_date, invest, plot
         plt.legend(['Adj close', 'Rolling ave.','Two std dev'], loc=2)
         plt.xticks(rotation=15)
         plt.ylabel('Value')
-        plt.tight_layout()
+        #plt.tight_layout()
         #plt.show()
         plt.savefig("stock.png")
     return H['value']
@@ -275,7 +271,6 @@ def get_prob(l_start, l_level, l_end, p_start, p_end):
     #Flat out the end
     y[l_level:l_end] = p_end
     return y
-
 
 def i_state(sharpe, mome, over_ma_h, under_ma_l, state_dict):
     #This gets states from the state dictionary
@@ -364,16 +359,23 @@ def Q_update(Q, state, state0, action0, alpha, gamma, p, yrt, goal):
 
 def get_reward(action, yrt, goal):
     #Return the reward according the action
-    if action == 'BUY':
-        reward = yrt
-    if action == 'SELL':
-        reward = yrt
-    if action == 'WAIT':
+    print(action,goal)
+    if action == 'BUY' and yrt>0:
+        reward = 2.00*yrt
+    if action == 'BUY' and yrt<0:
+        reward = -2.00*yrt
+    if action == 'SELL' and yrt<0:
+        reward = 2.00*yrt
+    if action == 'SELL' and yrt>0:
+        reward = -2.00*yrt    
+    if action == 'WAIT' or yrt==0:
         reward = 0.0
+    print(reward)
     if goal == 'lose':
-        return reward*(-2.0)
+        return reward*(-1.0)
     else:
         return reward
+  
 
 
 '''
@@ -402,8 +404,9 @@ stock_names = get_stock_names()
 start_date = '2013-01-01'
 end_date = '2019-05-30'
 s_data = stock_summary(stock_names, start_date, end_date)
+past = 400
 #Selecting 4 stocks from the summary with PCA and clustering
-n_stock = 4
+n_stock = 7
 portfolio = cluster(s_data, n_stock, plot)
 #portfolio = ['LOW', 'ALL', 'MSFT', 'AAPL']
 start_train_date = '2013-01-01'
@@ -412,9 +415,11 @@ end_date = '2019-05-30'
 #Launch Q-learning agent to manage your portfolio
 investment = 100000 #For example in Euro or Dollar
 #Trying to maximise your portfolio
-pv_max = q_learn(portfolio, start_train_date, start_test_date, end_date, investment, plot, 'win')
+pv_max = q_learn(portfolio, start_train_date, start_test_date, end_date, 
+investment, plot, 'win', past)
 #Trying to minimize your portfolio (to test learning)
-pv_min = q_learn(portfolio, start_train_date, start_test_date, end_date, investment, plot, 'lose')
+pv_min = q_learn(portfolio, start_train_date, start_test_date, end_date, 
+investment, plot, 'lose', past)
 #Combining results
 pv=pd.concat([pv_max, pv_min], axis=1)
 pv.columns=['To win','To lose']
@@ -432,14 +437,14 @@ if plot == 1:
     pv.plot(title='Q-learning testing', figsize=(10, 6))
     plt.grid()
     plt.ylabel('Value [Euro]')
-    plt.tight_layout()
+    #plt.tight_layout()
     #plt.show()
     plt.savefig("Value.png")
     #Reference to S&P 500
     ref_data = get_stock_data('SPY',start_train_date,end_date)
     #ref_data = ref_data['Close']
     hmm=pd.concat([pv,ref_data],axis=1)
-    hmm=hmm.iloc[360:-1]/hmm.iloc[360] #Normalise and limit to use range
+    hmm=hmm.iloc[past:-1]/hmm.iloc[past] #Normalise and limit to use range
     #Do nothing data
     temp = pd.DataFrame()
     for stock_name in portfolio:
@@ -448,7 +453,7 @@ if plot == 1:
         #donoth = donoth['Close']
         temp = pd.concat([temp, donoth], axis=1, sort=False)
     donoth=temp
-    donoth=donoth.iloc[360:-1]/donoth.iloc[360]
+    donoth=donoth.iloc[past:-1]/donoth.iloc[past]
     donoth=donoth*1/n_stock
     donoth=donoth.sum(axis=1)
     hmm=pd.concat([hmm,donoth],axis=1)
@@ -456,7 +461,7 @@ if plot == 1:
     hmm.plot()
     plt.grid()
     plt.ylabel('Normalized value')
-    plt.tight_layout()
+    #plt.tight_layout()
     #plt.show()
     plt.savefig("Result.png")
 print('Done.')
