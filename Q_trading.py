@@ -16,15 +16,19 @@ from sklearn import decomposition
 
 def get_stock_names():
     #Getting S&P 100 company names from Wikipedia
-    #Modified (2016-01-19) https://adesquared.wordpress.com/2013/06/16/using-python-beautifulsoup-to-scrape-a-wikipedia-table/
+    #Modified (2016-01-19) https://adesquared.wordpress.com/
+    #2013/06/16/using-python-beautifulsoup-to-scrape-a-
+    #wikipedia-table/
     wiki = "https://en.wikipedia.org/wiki/S%26P_100"
-    header = {'User-Agent': 'Mozilla/5.0'} #Needed to prevent 403 error on Wikipedia
+    header = {'User-Agent': 'Mozilla/5.0'} 
+    #Needed to prevent 403 error on Wikipedia
     try:
         req = urllib.request.Request(wiki,headers=header)
         page = urllib.request.urlopen(req)
         soup = BeautifulSoup(page)
         #Finding a table on Wikipedia page
-        table = soup.find("table", { "class" : "wikitable sortable" })
+        table = soup.find("table", 
+                { "class" : "wikitable sortable" })
         #Finding stock names from the table
         stock_name = []
         for row in table.findAll("tr"):
@@ -49,20 +53,18 @@ def get_stock_data(stock_name, start_date, end_date):
         data = data['Close']
         data.to_csv("data/"+stock_name+".csv", header=True)
     #data = data.sort_index()
-    return data
+    return data.loc[start_date:end_date]
 
 def stock_summary(stock_names, start_date, end_date):
     #Creating summary with the stock data
     data = pd.DataFrame()
     for stock_name in stock_names:
         #Get stock data
-        #sdata = get_stock_data(stock_name, start_date, end_date)
-        #sdata.columns = [stock_name]
-        #print(stock_name)
         stock_name = stock_name.replace("\n","")
         if os.path.isfile("data/"+stock_name+".csv"): 
             sdata = pd.read_csv("data/"+stock_name+".csv", index_col=0)
             sdata.index = pd.to_datetime(sdata.index)
+            sdata = sdata.loc[start_date:end_date]
         else:
             sdata = get_stock_data(stock_name, start_date, end_date)
         
@@ -178,6 +180,7 @@ plot, goal, past):
             data = yf.download(stock_name, start_date, end_date)
             data = data['Close']
             data.to_csv("data/"+stock_name+".csv", header=True)
+        data = data.loc[start_date:end_date]
         sdata = pd.concat([sdata, data], axis=1, sort=False) 
     data = sdata
     data=data.fillna(method='ffill',axis=0)
@@ -239,7 +242,6 @@ plot, goal, past):
                 port_value[i] = port_value[i] - yrt[i]*port_value[i]
 
         #Saving portfolio value
-        print(sum(port_value))
         pv.append(sum(port_value))
     H=data.iloc[past:len(data)]
     H['value'] = pv
@@ -312,14 +314,14 @@ def i_state(sharpe, mome, over_ma_h, under_ma_l, state_dict):
     #Return the item from the dictionary
     return state_dict[all]
 
-def i_action( act ):
-    #Fuction converts action into an integer
-    valid_a = ('BUY','SELL','WAIT')
-    i = 0
-    for i1 in valid_a:
-        if i1 == act:
-            return i
-        i = i+1
+#def i_action( act ):
+#    #Fuction converts action into an integer
+#    valid_a = ('BUY','SELL','WAIT')
+#    i = 0
+#    for i1 in valid_a:
+#        if i1 == act:
+#            return i
+#        i = i+1
 
 def create_states():
     #This function converts inputs into unique integer
@@ -348,6 +350,10 @@ def Q_update(Q, state, state0, action0, alpha, gamma, p, yrt, goal):
     #Q-update function
     #Defining valid actions
     v_action = ('BUY','SELL','WAIT')
+    i_action = {}
+    i_action['BUY']=0
+    i_action['SELL']=1
+    i_action['WAIT']=2
     #Taking a random action to improve learning
     if random.random() <= p:
         action = v_action[np.argmax(Q[state, :])]
@@ -356,7 +362,7 @@ def Q_update(Q, state, state0, action0, alpha, gamma, p, yrt, goal):
     #Calculating reward
     reward = get_reward(action, yrt, goal)
     #Updating the Q-matrix with reinforced learning 
-    Q[state0, i_action(action0)] = Q[state0, i_action(action0)] + alpha*(reward + gamma * max(Q[state, :])-Q[state0, i_action(action0)]) 
+    Q[state0, i_action[action0]] = Q[state0, i_action[action0]] + alpha*(reward + gamma * max(Q[state, :])-Q[state0, i_action[action0]]) 
     #Saving parameters for next time
     state0 = state
     action0 = action
@@ -368,11 +374,11 @@ def get_reward(action, yrt, goal):
     if action == 'BUY' and yrt>0:
         reward = 100.
     if action == 'BUY' and yrt<0:
-        reward = -100.
+        reward = -200.
     if action == 'SELL' and yrt<0:
         reward = 100.
     if action == 'SELL' and yrt>0:
-        reward = -100.    
+        reward = -200.    
     if action == 'WAIT' or yrt==0:
         reward = 0.0
     #print(reward)
@@ -381,8 +387,6 @@ def get_reward(action, yrt, goal):
     else:
         return reward
   
-
-
 '''
 The main function of the code is the following:
 1. Get stock names for S&P100 companies
@@ -390,15 +394,8 @@ The main function of the code is the following:
 3. Using clustering, selecting 4 stocks for portfolio
 4. Use Q-learning to do daily trading for the portfolio
 5. Estimate how well the Q-learning worked
-
-*** NOTE ***
-get_stock_data() function uses Quandl API key
-You can get free API key from www.quandl.com which is
-enough to run this code fully. If no API key is provided
-number of stocks will be limited
-*** NOTE ***
-
 '''
+
 if not os.path.exists('data'):
     os.makedirs('data')
 #If you want plots set plot to 1
@@ -407,15 +404,16 @@ plot = 1
 stock_names = get_stock_names()
 #Getting summary information for the stocks
 start_date = '2013-01-01'
-end_date = '2019-05-30'
+end_date = '2015-05-30'
 s_data = stock_summary(stock_names, start_date, end_date)
-past = 400
+past = 180
 #Selecting 4 stocks from the summary with PCA and clustering
-n_stock = 7
+n_stock = 5
 portfolio = cluster(s_data, n_stock, plot)
-#portfolio = ['LOW', 'ALL', 'MSFT', 'AAPL']
+print("Selected stocks: ")
+print(portfolio)
 start_train_date = '2013-01-01'
-start_test_date = '2017-12-31'
+start_test_date = '2016-12-31'
 end_date = '2019-05-30'
 #Launch Q-learning agent to manage your portfolio
 investment = 100000 #For example in Euro or Dollar
@@ -442,20 +440,16 @@ if plot == 1:
     pv.plot(title='Q-learning testing', figsize=(10, 6))
     plt.grid()
     plt.ylabel('Value [Euro]')
-    #plt.tight_layout()
-    #plt.show()
     plt.savefig("Value.png")
     #Reference to S&P 500
-    ref_data = get_stock_data('SPY',start_train_date,end_date)
-    #ref_data = ref_data['Close']
+    ref_data = get_stock_data('SPY',start_test_date,end_date)
     hmm=pd.concat([pv,ref_data],axis=1)
+    hmm = hmm.loc[start_test_date:end_date]
     hmm=hmm.iloc[past:-1]/hmm.iloc[past] #Normalise and limit to use range
     #Do nothing data
     temp = pd.DataFrame()
     for stock_name in portfolio:
-        donoth = get_stock_data(stock_name, start_train_date, end_date)
-        #data = get_stock_data(sname, start_train_date, end_date)
-        #donoth = donoth['Close']
+        donoth = get_stock_data(stock_name, start_test_date, end_date)
         temp = pd.concat([temp, donoth], axis=1, sort=False)
     donoth=temp
     donoth=donoth.iloc[past:-1]/donoth.iloc[past]
@@ -466,8 +460,6 @@ if plot == 1:
     hmm.plot()
     plt.grid()
     plt.ylabel('Normalized value')
-    #plt.tight_layout()
-    #plt.show()
     plt.savefig("Result.png")
 print('Done.')
  
