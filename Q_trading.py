@@ -444,6 +444,7 @@ if plot == 1:
     #Reference to S&P 500
     ref_data = get_stock_data('SPY',start_test_date,end_date)
     hmm=pd.concat([pv,ref_data],axis=1)
+    hmm.to_csv("portfolio_data.csv", header=True)
     hmm = hmm.loc[start_test_date:end_date]
     hmm=hmm.iloc[past:-1]/hmm.iloc[past] #Normalise and limit to use range
     #Do nothing data
@@ -456,6 +457,7 @@ if plot == 1:
     donoth=donoth*1/n_stock
     donoth=donoth.sum(axis=1)
     hmm=pd.concat([hmm,donoth],axis=1)
+    hmm.to_csv("result_data.csv", header=True)
     hmm.columns=['To win','To lose','S&P 500','Do nothing']
     hmm.plot()
     plt.grid()
