@@ -233,8 +233,13 @@ plot, goal, past):
             #Update the Q-matrix for one stock
             Q[i,:,:], state0, action0 ,reward = Q_update(Q[i,:,:], state, state0, action0, alpha, gamma, p[k], yrt[i], goal)
             #Updating portfolio value
-            port_value[i] = port_value[i] + reward * port_value[i]
+            if reward>0.0:
+                port_value[i] = port_value[i] + yrt[i]*port_value[i]
+            if reward<0.0:
+                port_value[i] = port_value[i] - yrt[i]*port_value[i]
+
         #Saving portfolio value
+        print(sum(port_value))
         pv.append(sum(port_value))
     H=data.iloc[past:len(data)]
     H['value'] = pv
@@ -359,18 +364,18 @@ def Q_update(Q, state, state0, action0, alpha, gamma, p, yrt, goal):
 
 def get_reward(action, yrt, goal):
     #Return the reward according the action
-    print(action,goal)
+    #print(action,goal,yrt)
     if action == 'BUY' and yrt>0:
-        reward = 2.00*yrt
+        reward = 100.
     if action == 'BUY' and yrt<0:
-        reward = -2.00*yrt
+        reward = -100.
     if action == 'SELL' and yrt<0:
-        reward = 2.00*yrt
+        reward = 100.
     if action == 'SELL' and yrt>0:
-        reward = -2.00*yrt    
+        reward = -100.    
     if action == 'WAIT' or yrt==0:
         reward = 0.0
-    print(reward)
+    #print(reward)
     if goal == 'lose':
         return reward*(-1.0)
     else:
